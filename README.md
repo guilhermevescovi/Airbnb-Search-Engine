@@ -23,7 +23,7 @@ Repository files description
 Main file with the work explanation to perform the analisys.
 
 `airbnb_search_engine.py`
-The code function with the main class used to perform the analysis.
+The code used to perform the analysis.
 
 `map.html`
 A map of the house locations for the bonus step.
