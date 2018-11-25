@@ -3,6 +3,8 @@
 ##### Group #17 - Giulia Scialanga, Guilherme Nicchio, Marco Minici
 ##### 25/11/2018
 
+![alt text](https://camo.githubusercontent.com/4a40a894279c877371ec42d0af5946631b5ff7cb/68747470733a2f2f68642e7475646f63646e2e6e65742f3733313038353f773d36343626683d323834 "Logo Title Text 1")
+
 Introduction
 ======
 The goal of this project consists in buiding a search engine over a data base of Airbnb houses.
