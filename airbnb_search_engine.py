@@ -21,6 +21,8 @@ import string
 import pickle
 import inflect
 
+
+
 class AirBnbPy():
 
     def __init__(self, data_dir_path="./data/",all_reviews_dir = "allReviews/"):
@@ -89,24 +91,27 @@ class AirBnbPy():
         self.tfIdfMatrix = None
         self.vectorizer = None
 
+        #Need this variable to compare the nan value while analyzing the
+        #'bedrooms_count' field.
+        self._nanFloat = None
+
         #fit for all solution
         #weight_price = 0.15
         #weight_bed = 0.25
         #weight_loc = 0.6
-        self.FFA = 0
-        self.weightsFFA = [0.15,0.25,0.6]
+        self._FFA = 0
+        self._weightsFFA = [0.15,0.25,0.6]
         #price oriented
         #weight_price = 0.7
         #weight_bed = 0.1
         #weight_loc = 0.2
-        self.PRICE = 1
-        self.weightsPrice = [0.7, 0.1, 0.2]
+        self._weightsPrice = [0.7, 0.1, 0.2]
         #location oriented
         #weight_price = 0.1
         #weight_bed = 0.2
         #weight_loc = 0.7
-        self.LOC = 2
-        self.weightsLoc = [0.1, 0.2, 0.7]
+        self._weightsLoc = [0.075, 0.175, 0.75]
+        self.allWeights = [self._weightsFFA, self._weightsPrice, self._weightsLoc]
 
 
     def loadData(self):
@@ -116,6 +121,10 @@ class AirBnbPy():
         #Given the structure of the dataset, having the index encoded as a column
         #So the parameter 'index_col' is specified
         self.data = pd.read_csv(self.dir_path+dataFilename, index_col = "Unnamed: 0", encoding = 'utf8')
+        #After the data are uploaded, it is possible to create the auxiliary variable
+        #needed to compare the 'bedrooms_count' field while analyzing the data
+        self._nanFloat = list(set(self.data['bedrooms_count'].tolist()))[:1]
+        #invoke the function to clean the data
         self._cleanData()
         return self.data
 
@@ -293,7 +302,6 @@ class AirBnbPy():
         self._setupNltk()
         #Process the query as we have processed the dataset
         q = self._nltkProcess(queryString).split(' ')
-        print("Query processed: ",q)
         #list of docs for each word
         result = list()
         #For each word in the query
@@ -533,45 +541,45 @@ class AirBnbPy():
         Step 4: Define a new score!
     '''
 
-    def _similarityBed(rooms_requested, rooms_actuals):
+    def _similarityBed(self, rooms_requested, rooms_actuals):
         if (rooms_requested <= rooms_actuals):
             return 1
         dif_rooms = rooms_requested - rooms_actuals
         return (1 /(1 + dif_rooms**10))
 
-    def _similarityPrice(price_requested, price_actual):
+    def _similarityPrice(self, price_requested, price_actual):
         if (price_requested >= price_actual):
             return 1
         dif_price = price_requested - price_actual
         return (1 /(price_actual/price_requested))
 
-    def _similarityLocation(request_location, actual_location):
+    def _similarityLocation(self, request_location, actual_location):
         return 1/(1+0.1*distance.geodesic(request_location, actual_location, ellipsoid = (6377., 6356., 1 / 297.)).kilometers)
 
 
-    def _computeSimilarity(request, actual, weights):
+    def _computeSimilarity(self, request, actual, weights):
 
         denominator = 3
 
         request_price = request[0]
         actual_price = float(actual[0][1:])
-        sim_price = similarityPrice(request_price, actual_price)
+        sim_price = self._similarityPrice(request_price, actual_price)
 
         actual_bedroom = actual[1]
         request_bedroom = request[1]
-        if(actual_bedroom in self.nanFloat):
+        if(actual_bedroom in self._nanFloat):
             denominator -= 1
             sim_bed = 0
         elif(actual_bedroom == 'Studio'):
             actual_bedroom = 1
-            sim_bed = similarityBed(request_bedroom, actual_bedroom)
+            sim_bed = self._similarityBed(request_bedroom, actual_bedroom)
         else:
             actual_bedroom = int(actual_bedroom)
-            sim_bed = similarityBed(request_bedroom, actual_bedroom)
+            sim_bed = self._similarityBed(request_bedroom, actual_bedroom)
 
         actual_coordinates = (actual[2], actual[3])
         request_coordinates = (request[2], request[3])
-        sim_loc = similarityLocation(request_coordinates, actual_coordinates)
+        sim_loc = self._similarityLocation(request_coordinates, actual_coordinates)
 
         sim =[sim_price,sim_bed,sim_loc]
 
@@ -581,21 +589,35 @@ class AirBnbPy():
 
         return res
 
-    def customQuery(self, textQuery, query):
+    def _returnWeightVector(self,weightChoice):
+        if( weightChoice < 0 or weightChoice >= len(self.allWeights)):
+            print("[LOG]: You have chosen a non-existent choice")
+            print("[LOG]: The possible choices are:\n\t[0] Fit-for-all\n\t[1] Price oriented\n\t[2] Location oriented")
+            print("[LOG]: The [0] Fit-for-all solution has been selected by default.")
+            return self.allWeights[self._FFA]
+        return self.allWeights[weightChoice]
+
+    def customQuery(self, textQuery, query, k, weightChoice):
 
         notRanked,_  = self.query(textQuery)
+        #if the result is empty or it contains only one record
+        #it is useless to rank the result
+        if notRanked is None or notRanked.shape[0] == 1 :
+            return notRanked
 
         #get the indexes of each document in the intermediate result
         indexes = np.array(notRanked.index)
+        #Retrieve the weight vector for the similarity function
+        weightsVector = self._returnWeightVector(weightChoice = weightChoice)
         #create the new series containing the custom similarity
         #Since we are using the "self.query()" function for a matter of reuse,
         #we now need to deal with the missing features needed to compute the
         #custom score.
-        orientation = int(input('What would you like to focus on this search? Enter 1 for no preferences, 2 for price oriented or 3 for location oriented: '))
-        weightsoptions = [self.weightsFFA, self.weightsPrice, self.weightsLoc]
-
-        notRanked["Similarity"] = pd.Series(data = self.data.loc[indexes][["average_rate_per_night","bedrooms_count","latitude","longitude"]].apply(lambda x : self._computeSimilarity(request=query, actual=x.values.tolist(), weights = weightsoptions[orientation] ) , axis = 1), index = indexes)
-
+        #So we retrieve the data from the original dataset(@self.data) and take only
+        #the records of interest(@indexes) and the columns needed to compute the
+        #custom similarity.
+        columnsOfInterest = ["average_rate_per_night","bedrooms_count","latitude","longitude"]
+        notRanked["Similarity"] = pd.Series(data = self.data.loc[indexes][columnsOfInterest].apply(lambda x : self._computeSimilarity(request=query, actual=x.values.tolist(), weights = weightsVector) , axis = 1), index = indexes)
         #Since is is needed to use an heap structure, the results are stored in a list
         #and then the list is passed to python "heapq" package functions, which transform
         #the list in an heap structure.
@@ -610,15 +632,15 @@ class AirBnbPy():
         #the column attributes that must be returned with the result
         resultColumns = ["ranking" ,"title","description","city","url","Similarity"]
         resultData = []
-
+        resultIndexes = []
         ranking = 1
         for t in nlargest(k, tmp, key = lambda x:x[1]):
             index = t[0]
             sim_value = t[1]
-            data = notRanked.loc[index][resultColumns[:-1]].values.tolist()
+            data = notRanked.loc[index][resultColumns[1:-1]].values.tolist()
             data = [ranking] + data
-            data.append(sim_value)
             ranking += 1
             resultData.append(data)
+            resultIndexes.append(index)
 
-        return pd.DataFrame(data = resultData, columns = resultColumns)
+        return pd.DataFrame(data = resultData, columns = resultColumns[:-1], index = resultIndexes)
