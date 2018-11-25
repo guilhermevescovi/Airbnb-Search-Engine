@@ -29,3 +29,4 @@ The code used to perform the analysis.
 
 `map.html`
 A map of the house locations for the bonus step.
+![alt text](http://funkyimg.com/i/2NvB7.png "Logo Title Text")
