@@ -526,11 +526,18 @@ class AirBnbPy():
 
 
     def _evaluateCosineSimilarity(self,query, doc_index):
-
+	#Since the TfIdfVectorizer class given by the scipy package, by default,
+	#normalize the tfidf vector of each document then the denominator is given by
+	#the norm of the query.
+	#Since the query is a vector of zero and ones, the norm is given by the square 
+	#root of the length of the query vector(# of 1s)
         denominator = len(query)
 
         numerator = 0
-
+	
+	#given the structure of the query vector, the dot product between the query and
+	#the document is given by the sum of the tfidf values of the document corresponding
+	#to the 1s of the query.
         for word in set(query):
 
             numerator += [t[1] for t in self.RI2[self.term_enc2[word]] if t[0] ==  "doc_"+str(doc_index)][0]
